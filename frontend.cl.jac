@@ -15,7 +15,7 @@ sv import from main {
     AddStoreEntry, ListStoreEntries, DeleteStoreEntry, FindNearbyStores
 }
 
-def:pub app -> any {
+def:pub app -> JsxElement {
     has isLoggedIn: bool = False,
         checkingAuth: bool = True,
         isSignup: bool = False,
@@ -268,7 +268,7 @@ def:pub app -> any {
                                     ]}
                                 </div>
                             ) if nearbyStores.length > 0 else None}
-
+                            </div>
                             # --- Price comparison panel ---
                             {(
                                 <div className="card">
