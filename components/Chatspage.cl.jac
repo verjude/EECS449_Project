@@ -2,7 +2,7 @@
 
 sv import from main { AskAI }
 
-def:pub ChatsPage() -> obj {
+def:pub Chatspage() -> obj {
     has prompt: str = "",
         messages: list = [{"role": "ai", "text": "Hi! Ask me anything about products, pricing, or general shopping advice."}],
         loading: bool = False;
@@ -54,7 +54,7 @@ def:pub ChatsPage() -> obj {
         </div>;
 }
 
-impl ChatsPage.handleSend -> None {
+impl Chatspage.handleSend -> None {
     if not prompt.trim() { return; }
     
     userText = prompt;
@@ -75,6 +75,6 @@ impl ChatsPage.handleSend -> None {
     loading = False;
 }
 
-impl ChatsPage.handleKeyPress(e: any) -> None {
+impl Chatspage.handleKeyPress(e: any) -> None {
     if e.key == "Enter" { handleSend(); }
 }

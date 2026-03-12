@@ -132,10 +132,11 @@ def:pub app -> JsxElement {
                 {(
                     <StoreProductsPage
                         store={selectedStoreEntry}
-                        # Fix: use navigateTo("home") instead of the old navigateHome
                         onBack={lambda -> None { navigateTo("home"); }}
                     />
                 ) if currentPage == "store-products" and selectedStoreEntry else (
+                    <Chatspage />
+                ) if currentPage == "chats" else (
                     <div className="app-container">
                         <div className="app-content">
                             <div className="two-column-layout">
