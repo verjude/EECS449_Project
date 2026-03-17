@@ -10,6 +10,7 @@ cl {
 
 import from byllm.lib { Model }
 import from uuid { uuid4 }
+import from duckduckgo_search { DDGS }
 
 glob llm = Model(model_name="gemini/gemini-2.5-flash");
 
@@ -32,9 +33,19 @@ obj NearbyStore {
     has store_type: str;
 }
 
+obj ExtractedPrice {
+    has store_name: str;
+    has price: float;
+    has currency: str;
+    has available: bool;
+}
+
 sem PriceAnalysis.recommendation = "A brief recommendation on where to buy based on price comparison";
 sem NearbyStore.distance_miles = "Estimated distance in miles from the user's location";
 sem NearbyStore.store_type = "Type of store, e.g. supermarket, pharmacy, electronics, department store";
+sem ExtractedPrice.price = "The numeric price value, or 0.0 if not found";
+sem ExtractedPrice.store_name = "The name of the store or retailer";
+sem ExtractedPrice.available = "Whether the product appears to be in stock";
 
 """Categorize a product based on its name."""
 def categorize_product(product_name: str) -> ProductCategory by llm();
@@ -44,8 +55,18 @@ def classify_price_range(price: float, product_name: str) -> PriceRange by llm()
 
 """Analyze price data and provide recommendation."""
 def analyze_prices(product_name: str, store_prices: list[dict]) -> PriceAnalysis by llm();
+
 """Given a location, return a list of well-known stores nearby with their estimated distances."""
 def find_nearby_stores(location: str) -> list[NearbyStore] by llm();
+
+"""You are a helpful shopping assistant for a price comparator app.
+Given the conversation history, provide helpful advice about products,
+pricing strategies, and where to buy. Be concise and practical."""
+def ask_ai(history: list[dict]) -> str by llm();
+
+"""Extract the store name and price from a search result snippet for the given product.
+If no price is found, set price to 0.0 and available to false."""
+def extract_price_from_snippet(product_name: str, snippet: str, source: str) -> ExtractedPrice by llm();
 
 # --- Data Nodes ---
 
@@ -63,21 +84,19 @@ node Store {
         url: str = "";
 }
 
-# NEW: A standalone global store entry, independent of any product.
-# Lives directly under Root so users can build a reusable list of stores.
 node StoreEntry {
     has id: str,
         name: str;
 }
 
-# --- Product Walkers (unchanged) ---
+# --- Product Walkers ---
 
 walker:priv AddProduct {
     has title: str;
 
     can create with Root entry {
         category = str(categorize_product(self.title)).split(".")[-1].lower();
-        
+
         new_product = here ++> Product(
             id=str(uuid4()),
             name=self.title,
@@ -126,7 +145,7 @@ walker:priv DeleteProduct {
     }
 }
 
-# --- Store Price Walkers (unchanged) ---
+# --- Store Price Walkers ---
 
 walker:priv AddStorePrice {
     has product_id: str;
@@ -324,9 +343,7 @@ walker:priv ComparePrices {
     }
 }
 
-# --- Global Store List Walkers (NEW) ---
-# These three walkers manage the user's personal list of stores.
-# They are completely independent of Products and Store price nodes.
+# --- Global Store List Walkers ---
 
 walker:priv AddStoreEntry {
     has name: str;
@@ -393,8 +410,86 @@ walker:priv FindNearbyStores {
     }
 }
 
-"""Provide a helpful response to the user's latest message given the conversation history."""
-def ask_ai(history: list[dict]) -> str by llm();
+# --- Live Price Search Walker (DuckDuckGo) ---
+
+walker:pub LivePriceSearch {
+    has product_name: str;
+
+    can run with Root entry {
+        raw_results = [];
+
+        # 1. Search DuckDuckGo for prices across major stores
+        try {
+            with DDGS() as ddgs {
+                search_results = ddgs.text(
+                    self.product_name + " price buy site:amazon.com OR site:walmart.com OR site:bestbuy.com OR site:target.com OR site:ebay.com",
+                    max_results=10
+                );
+                for r in search_results {
+                    raw_results.append({
+                        "title": r["title"],
+                        "snippet": r["body"],
+                        "url": r["href"],
+                        "source": r["href"].split("/")[2].replace("www.", "")
+                    });
+                }
+            }
+        } except Exception as e {
+            report {"error": "Search failed: " + str(e)};
+            return;
+        }
+
+        if len(raw_results) == 0 {
+            report {"error": "No search results found for " + self.product_name};
+            return;
+        }
+
+        # 2. Use AI to extract prices from each snippet
+        extracted_prices = [];
+        for result in raw_results {
+            try {
+                extracted = extract_price_from_snippet(
+                    self.product_name,
+                    result["snippet"],
+                    result["source"]
+                );
+                # Only keep results where AI found a valid price
+                if extracted.price > 0.0 {
+                    extracted_prices.append({
+                        "store": extracted.store_name,
+                        "price": extracted.price,
+                        "currency": extracted.currency,
+                        "available": extracted.available,
+                        "url": result["url"]
+                    });
+                }
+            } except Exception as e {
+                continue;
+            }
+        }
+
+        if len(extracted_prices) == 0 {
+            report {"error": "Could not extract prices for " + self.product_name};
+            return;
+        }
+
+        # 3. Run AI analysis on extracted prices
+        analysis = analyze_prices(self.product_name, extracted_prices);
+
+        report {
+            "product": self.product_name,
+            "prices": extracted_prices,
+            "analysis": {
+                "best_store": analysis.best_store,
+                "worst_store": analysis.worst_store,
+                "avg_price": analysis.avg_price,
+                "recommendation": analysis.recommendation
+            }
+        };
+    }
+}
+
+# --- Chat Walker ---
 
 walker:pub AskAI {
     has history: list;

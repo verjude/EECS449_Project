@@ -51,7 +51,7 @@ def:pub AuthForm(
                         />
                     </div>
                     {(
-                        <div className="error-message">{error}</div>
+                        <div className="error-message">{error.message}</div>
                     ) if error else None}
                     <button
                         type="submit"
