@@ -1,4 +1,4 @@
-"""Price Comparator - Client-Side UI with routing and location search."""
+"""Price Comparator - Client-Side UI with routing, location search, and AI cross-product recommendations."""
 
 import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 import "./styles.css";
@@ -9,12 +9,14 @@ import from components.AuthForm { AuthForm }
 import from components.StoreProductsPage { StoreProductsPage }
 import from components.Navbar { Navbar }
 import from components.Chatspage { Chatspage }
+import from components.CrossProductResults { CrossProductResults }
 
 sv import from main {
     AddProduct, ListProducts, DeleteProduct,
     AddStorePrice, ListStorePrices, UpdateStorePrice, DeleteStore,
     GetBestPrice, ComparePrices,
-    AddStoreEntry, ListStoreEntries, DeleteStoreEntry, FindNearbyStores
+    AddStoreEntry, ListStoreEntries, DeleteStoreEntry, FindNearbyStores,
+    LivePriceSearch, CrossProductSearch
 }
 
 def:pub app -> JsxElement {
@@ -53,7 +55,14 @@ def:pub app -> JsxElement {
         locationQuery: str = "",
         nearbyStores: list = [],
         locationLoading: bool = False,
-        locationError: str = "";
+        locationError: str = "",
+
+        # --- AI Product Search (NEW) ---
+        searchQuery: str = "",
+        searchLoading: bool = False,
+        searchResults: any = None,
+        searchError: str = "",
+        useSelectedStores: bool = True;
 
     can with entry {
         isLoggedIn = jacIsLoggedIn();
@@ -88,7 +97,7 @@ def:pub app -> JsxElement {
     async def addStoreEntry -> None;
     async def deleteStoreEntry(storeId: str) -> None;
     def handleStoreEntryKeyPress(e: any) -> None;
-    async def addStoreEntryDirect(name: str) -> None;   # <-- ADD THIS
+    async def addStoreEntryDirect(name: str) -> None;
 
     # --- Routing methods ---
     def navigateToStoreProducts(store: any) -> None;
@@ -99,6 +108,11 @@ def:pub app -> JsxElement {
     def getUserLocation -> None;
     def handleLocationKeyPress(e: any) -> None;
 
+    # --- AI Cross-Product Search methods (NEW) ---
+    async def handleAISearch -> None;
+    def handleSearchKeyPress(e: any) -> None;
+    async def handleQuickPriceSearch -> None;
+
     if checkingAuth {
         return
             <div style={{"display": "flex", "justifyContent": "center",
@@ -107,17 +121,6 @@ def:pub app -> JsxElement {
                 Loading...
             </div>;
     }
-
-    # if isLoggedIn and currentPage == "store-products" and selectedStoreEntry {
-    #     return
-    #         <StoreProductsPage
-    #             store={selectedStoreEntry}
-    #             onBack={navigateHome}
-    #         />;
-    # }
-
-    # Remove the old `if isLoggedIn and currentPage == "store-products"` block entirely.
-    # Replace the main `if isLoggedIn` block with the following:
 
     if isLoggedIn {
         bestPrice = getBestPrice();
@@ -139,6 +142,74 @@ def:pub app -> JsxElement {
                 ) if currentPage == "chats" else (
                     <div className="app-container">
                         <div className="app-content">
+
+                            <div className="card" style={{"marginBottom": "1.5rem"}}>
+                                <h2 className="panel-title" style={{"display": "flex", "alignItems": "center", "gap": "0.5rem"}}>
+                                    <span>🔍</span> AI Product Search
+                                </h2>
+                                <p className="panel-subtitle">
+                                    Search for any product — get real prices and AI-recommended alternatives
+                                </p>
+                                <div className="add-row" style={{"gap": "0.5rem", "flexWrap": "wrap"}}>
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={lambda e: any -> None { searchQuery = e.target.value; }}
+                                        onKeyPress={handleSearchKeyPress}
+                                        placeholder="Search any product (e.g. AirPods Pro 2, Nike Air Max 90)..."
+                                        className="todo-input"
+                                        style={{"flex": "1", "minWidth": "200px"}}
+                                        disabled={searchLoading}
+                                    />
+                                    <button
+                                        onClick={lambda -> None { handleAISearch(); }}
+                                        className="btn-generate"
+                                        disabled={searchLoading or not searchQuery.strip()}
+                                        style={{"fontSize": "0.9rem", "padding": "0.5rem 1rem", "whiteSpace": "nowrap"}}
+                                    >
+                                        {("🔄 Searching..." if searchLoading else "🤖 Compare + Alternatives")}
+                                    </button>
+                                    <button
+                                        onClick={lambda -> None { handleQuickPriceSearch(); }}
+                                        className="btn-add"
+                                        disabled={searchLoading or not searchQuery.strip()}
+                                        style={{"whiteSpace": "nowrap"}}
+                                    >
+                                        {("..." if searchLoading else "⚡ Quick Price")}
+                                    </button>
+                                </div>
+                                <div style={{"marginTop": "0.75rem", "display": "flex", "alignItems": "center", "gap": "0.5rem"}}>
+                                    <label style={{"display": "flex", "alignItems": "center", "gap": "0.4rem", "cursor": "pointer", "fontSize": "0.85rem", "color": "rgba(255,255,255,0.6)"}}>
+                                        <input
+                                            type="checkbox"
+                                            checked={useSelectedStores}
+                                            onChange={lambda e: any -> None { useSelectedStores = e.target.checked; }}
+                                            style={{"accentColor": "#3b82f6"}}
+                                        />
+                                        Only show prices from my stores
+                                        {(" (" + str(storeEntries.length) + " stores)") if storeEntries.length > 0 else " (none added yet)"}
+                                    </label>
+                                </div>
+
+                                {(
+                                    <div style={{
+                                        "marginTop": "1rem",
+                                        "padding": "0.75rem 1rem",
+                                        "background": "rgba(248,113,113,0.1)",
+                                        "border": "1px solid rgba(248,113,113,0.3)",
+                                        "borderRadius": "8px",
+                                        "color": "#f87171",
+                                        "fontSize": "0.9rem"
+                                    }}>
+                                        {searchError}
+                                    </div>
+                                ) if searchError else None}
+
+                                {(
+                                    <CrossProductResults results={searchResults} />
+                                ) if searchResults else None}
+                            </div>
+
                             <div className="two-column-layout">
                                 <div className="column-left">
                                     <div className="card">

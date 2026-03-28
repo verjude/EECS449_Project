@@ -110,6 +110,10 @@ impl app.handleLogout -> None {
     currentPage = "home";
     selectedStoreEntry = None;
     nearbyStores = [];
+    # Reset AI search state
+    searchQuery = "";
+    searchResults = None;
+    searchError = "";
 }
 
 impl app.handleSubmit(e: any) -> None {
@@ -255,4 +259,101 @@ impl app.searchNearbyStores -> None {
 
 impl app.handleLocationKeyPress(e: any) -> None {
     if e.key == "Enter" { searchNearbyStores(); }
+}
+
+# ─────────────────────────────────────────────
+# AI Cross-Product Search (NEW)
+# ─────────────────────────────────────────────
+
+impl app.handleAISearch -> None {
+    if not searchQuery.trim() { return; }
+    searchLoading = True;
+    searchError = "";
+    searchResults = None;
+
+    try {
+        # Build selected store names for filtering
+        selected_store_names = [];
+        if useSelectedStores and storeEntries.length > 0 {
+            selected_store_names = [s.name for s in storeEntries];
+        }
+
+        result = root spawn CrossProductSearch(
+            product_name=searchQuery.trim(),
+            selected_stores=selected_store_names,
+            max_alternatives=3
+        );
+
+        if result.reports and result.reports.length > 0 {
+            data = result.reports[0];
+            if data.error {
+                searchError = data.error;
+            } else {
+                searchResults = data;
+            }
+        } else {
+            searchError = "No results returned. Try a different product name.";
+        }
+    } except Exception as e {
+        searchError = "Search failed. Please try again.";
+    }
+    searchLoading = False;
+}
+
+impl app.handleSearchKeyPress(e: any) -> None {
+    if e.key == "Enter" { handleAISearch(); }
+}
+
+impl app.handleQuickPriceSearch -> None {
+    if not searchQuery.trim() { return; }
+    searchLoading = True;
+    searchError = "";
+    searchResults = None;
+
+    try {
+        selected_store_names = [];
+        if useSelectedStores and storeEntries.length > 0 {
+            selected_store_names = [s.name for s in storeEntries];
+        }
+
+        result = root spawn LivePriceSearch(
+            product_name=searchQuery.trim(),
+            selected_stores=selected_store_names
+        );
+
+        if result.reports and result.reports.length > 0 {
+            data = result.reports[0];
+            if data.error {
+                searchError = data.error;
+            } else {
+                # Wrap LivePriceSearch result to match CrossProductResults format
+                searchResults = {
+                    "product": data.product,
+                    "category": "",
+                    "source": data.source,
+                    "original": {
+                        "name": data.product,
+                        "best_price": 0,
+                        "prices": data.prices,
+                        "deal_evaluation": data.deal_evaluation if data.deal_evaluation else {}
+                    },
+                    "alternatives": [],
+                    "ai_summary": data.analysis.recommendation if data.analysis else ""
+                };
+                # Calculate best price from results
+                if data.prices and data.prices.length > 0 {
+                    best = data.prices[0].price;
+                    for p in data.prices {
+                        if p.price < best { best = p.price; }
+                    }
+                    searchResults.original.best_price = best;
+                }
+            }
+        } else {
+            searchError = "No results returned. Try a different product name.";
+        }
+    } except Exception as e {
+        searchError = "Search failed. Please try again.";
+    }
+    searchLoading = False;
 }
