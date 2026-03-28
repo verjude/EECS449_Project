@@ -330,8 +330,9 @@ impl app.handleQuickPriceSearch -> None {
                     "product": data.product,
                     "source": data.source,
                     "store_groups": data.store_groups if data.store_groups else [],
-                    "prices": data.prices if data.prices else [],
                     "analysis": data.analysis if data.analysis else {},
+                    "smart_analysis": data.smart_analysis if data.smart_analysis else {},
+                    "store_brand": data.store_brand if data.store_brand else {},
                     "deal_evaluation": data.deal_evaluation if data.deal_evaluation else {}
                 };
             }

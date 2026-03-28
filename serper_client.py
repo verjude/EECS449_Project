@@ -3,7 +3,7 @@
 import requests
 
 
-def search_google_shopping(query, api_key, num_results=20):
+def search_google_shopping(query, api_key, num_results=5):
     """Generic Google Shopping search."""
     if not api_key:
         return []
@@ -28,7 +28,7 @@ def search_store_prices(product_name, store_names, api_key, results_per_store=5)
         product_name: e.g. "tylenol extra strength"
         store_names: e.g. ["Target", "CVS", "Walgreens"]
         api_key: Serper.dev API key
-        results_per_store: how many results per store
+        results_per_store: how many results per store (hard cap)
     
     Returns:
         List of dicts with store, price, title, url, rating, reviews
@@ -50,7 +50,10 @@ def search_store_prices(product_name, store_names, api_key, results_per_store=5)
             response.raise_for_status()
             results = response.json().get("shopping", [])
             
+            kept = 0
             for r in results:
+                if kept >= results_per_store:
+                    break
                 source = r.get("source", "")
                 # Only keep results actually from this store
                 if store_name.lower() in source.lower() or source.lower() in store_name.lower():
@@ -63,10 +66,12 @@ def search_store_prices(product_name, store_names, api_key, results_per_store=5)
                         "ratingCount": r.get("ratingCount", None),
                         "store_query": store_name
                     })
+                    kept += 1
             
-            print(f"Serper: {len(results)} results for '{query}', kept {sum(1 for x in all_results if x.get('store_query') == store_name)} from {store_name}")
+            print(f"Serper: {len(results)} raw results for '{query}', kept {kept} from {store_name}")
             
         except Exception as e:
             print(f"Serper error for {store_name}: {e}")
     
+    print(f"Serper: {len(all_results)} total results across {len(store_names)} stores")
     return all_results
