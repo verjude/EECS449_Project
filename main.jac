@@ -1,4 +1,4 @@
-"""PriceComparator - Google Shopping prices + AI recommendations."""
+"""PriceComparator - Compare prices across Target, CVS, and Walgreens."""
 
 cl {
     import from frontend { app as ClientApp }
@@ -11,19 +11,14 @@ cl {
 import from byllm.lib { Model }
 import from uuid { uuid4 }
 import from ddgs { DDGS }
-import from serper_client { search_google_shopping }
+import from serper_client { search_store_prices }
 
 glob SERPER_API_KEY = "f9181c85e50b3547e7d0df656dbebc91d1713cb5";
 
-def google_shopping_search(query: str, num_results: int = 20) -> list[dict] {
-    result = search_google_shopping(query, SERPER_API_KEY, num_results);
-    print("DEBUG: google_shopping got " + str(len(result)) + " results");
-    return result;
-}
-
-def ddgs_fallback_search(query: str, max_results: int = 10) -> list[dict] {
-    ddgs = DDGS();
-    return [r for r in ddgs.text(query, max_results=max_results)];
+def search_product_at_stores(product_name: str, store_names: list) -> list[dict] {
+    results = search_store_prices(product_name, store_names, SERPER_API_KEY, 5);
+    print("DEBUG: Got " + str(len(results)) + " total results across " + str(len(store_names)) + " stores");
+    return results;
 }
 
 def web_search(query: str, max_results: int = 10) -> list[dict] {
@@ -53,13 +48,6 @@ obj NearbyStore {
     has store_type: str;
 }
 
-obj ExtractedPrice {
-    has store_name: str;
-    has price: float;
-    has currency: str;
-    has available: bool;
-}
-
 obj AlternativeProduct {
     has name: str;
     has reason: str;
@@ -71,26 +59,14 @@ obj ProductRecommendation {
     has comparison_summary: str;
 }
 
-obj DealVerdict {
-    has is_good_deal: bool;
-    has verdict: str;
-    has savings_tip: str;
-}
-
 sem PriceAnalysis.recommendation = "A brief recommendation on where to buy based on price comparison";
 sem NearbyStore.distance_miles = "Estimated distance in miles from the user's location";
 sem NearbyStore.store_type = "Type of store, e.g. supermarket, pharmacy, electronics, department store";
-sem ExtractedPrice.price = "The numeric price value, or 0.0 if not found";
-sem ExtractedPrice.store_name = "The name of the store or retailer";
-sem ExtractedPrice.available = "Whether the product appears to be in stock";
 sem AlternativeProduct.name = "The full product name of the alternative";
 sem AlternativeProduct.reason = "A concise 1-2 sentence explanation of why this is a good alternative";
 sem AlternativeProduct.search_query = "The exact search query to use on Google Shopping to find this product";
 sem ProductRecommendation.alternatives = "A list of 2-3 alternative products. Include cheaper options AND similar-priced competitors";
 sem ProductRecommendation.comparison_summary = "A 2-3 sentence overview of the competitive landscape";
-sem DealVerdict.is_good_deal = "True if this price represents good value";
-sem DealVerdict.verdict = "A brief verdict like 'Great deal' or 'Overpriced'";
-sem DealVerdict.savings_tip = "A specific tip to save money";
 
 # ─────────────────────────────────────────────
 # AI Functions
@@ -108,14 +84,8 @@ def find_nearby_stores(location: str) -> list[NearbyStore] by llm();
 """You are a helpful shopping assistant. Provide advice about products and pricing. Use web search if needed."""
 def ask_ai(history: list[dict]) -> str by llm(tools=[web_search]);
 
-"""Extract the store name and price from a search result snippet. If no price found, set price to 0.0."""
-def extract_price_from_snippet(product_name: str, snippet: str, source: str) -> ExtractedPrice by llm();
-
 """Suggest 2-3 alternative products the user should consider. Include cheaper and similar-priced options."""
 def suggest_alternatives(product_name: str, product_category: str, current_best_price: float) -> ProductRecommendation by llm();
-
-"""Determine if a price is a good deal compared to the average."""
-def evaluate_deal(product_name: str, store_name: str, store_price: float, avg_price: float) -> DealVerdict by llm();
 
 # ─────────────────────────────────────────────
 # Data Nodes
@@ -282,15 +252,19 @@ walker:priv FindNearbyStores {
 # Helpers
 # ─────────────────────────────────────────────
 
-def parse_shopping_results(shopping_results: list[dict], selected_stores: list = []) -> list[dict] {
-    extracted = [];
-    for r in shopping_results {
+def parse_and_group_by_store(raw_results: list[dict]) -> list[dict] {
+    """Parse results and group by store. Returns list of store groups:
+    [{"store": "Target", "products": [{"title": "...", "price": 4.59, "url": "...", "rating": 4.8}, ...]}, ...]
+    Each store's products are sorted by price ascending."""
+
+    # Collect all valid prices
+    all_prices = [];
+    for r in raw_results {
         store_name = r.get("source", "Unknown");
         price_str = r.get("price", "");
         link = r.get("link", "");
         title = r.get("title", "");
         rating = r.get("rating", None);
-        reviews = r.get("ratingCount", None);
 
         price_val = 0.0;
         if price_str {
@@ -301,22 +275,110 @@ def parse_shopping_results(shopping_results: list[dict], selected_stores: list =
         }
         if price_val <= 0.0 { continue; }
 
-        if len(selected_stores) > 0 {
-            store_lower = store_name.lower();
-            matched = False;
-            for s in selected_stores {
-                if s.lower() in store_lower or store_lower in s.lower() { matched = True; break; }
-            }
-            if not matched { continue; }
-        }
-
-        extracted.append({"store": store_name, "price": price_val, "currency": "USD", "available": True, "url": link, "title": title, "rating": rating, "reviews": reviews});
+        all_prices.append({
+            "store": store_name,
+            "title": title,
+            "price": price_val,
+            "url": link,
+            "rating": rating
+        });
     }
-    return extracted;
+
+    # Group by store name
+    store_names_seen = [];
+    store_groups = [];
+
+    for p in all_prices {
+        store = p["store"];
+        # Find if we already have this store group
+        found = False;
+        for g in store_groups {
+            if g["store"] == store {
+                g["products"].append({
+                    "title": p["title"],
+                    "price": p["price"],
+                    "url": p["url"],
+                    "rating": p["rating"]
+                });
+                found = True;
+                break;
+            }
+        }
+        if not found {
+            store_groups.append({
+                "store": store,
+                "products": [{
+                    "title": p["title"],
+                    "price": p["price"],
+                    "url": p["url"],
+                    "rating": p["rating"]
+                }]
+            });
+        }
+    }
+
+    # Sort products within each store by price ascending
+    for g in store_groups {
+        products = g["products"];
+        n = len(products);
+        i = 0;
+        while i < n {
+            j = 0;
+            while j < n - i - 1 {
+                if products[j]["price"] > products[j + 1]["price"] {
+                    temp = products[j];
+                    products[j] = products[j + 1];
+                    products[j + 1] = temp;
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    # Sort store groups by their cheapest product price
+    ng = len(store_groups);
+    i = 0;
+    while i < ng {
+        j = 0;
+        while j < ng - i - 1 {
+            price_a = store_groups[j]["products"][0]["price"] if len(store_groups[j]["products"]) > 0 else 9999;
+            price_b = store_groups[j + 1]["products"][0]["price"] if len(store_groups[j + 1]["products"]) > 0 else 9999;
+            if price_a > price_b {
+                temp = store_groups[j];
+                store_groups[j] = store_groups[j + 1];
+                store_groups[j + 1] = temp;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+
+    return store_groups;
+}
+
+def flatten_prices(store_groups: list[dict]) -> list[dict] {
+    """Flatten grouped results back to a flat list for the analysis field."""
+    flat = [];
+    for g in store_groups {
+        for p in g["products"] {
+            flat.append({
+                "store": g["store"],
+                "price": p["price"],
+                "title": p["title"],
+                "url": p["url"],
+                "rating": p["rating"],
+                "currency": "USD",
+                "available": True,
+                "reviews": None
+            });
+        }
+    }
+    return flat;
 }
 
 # ─────────────────────────────────────────────
-# LivePriceSearch — NO AI, just raw prices
+# LivePriceSearch — grouped by store
 # ─────────────────────────────────────────────
 
 walker:pub LivePriceSearch {
@@ -324,22 +386,39 @@ walker:pub LivePriceSearch {
     has selected_stores: list = [];
 
     can run with Root entry {
-        shopping_results = google_shopping_search(self.product_name);
+        stores_to_search = self.selected_stores;
+        if len(stores_to_search) == 0 {
+            stores_to_search = ["Target", "CVS", "Walgreens"];
+        }
 
-        if len(shopping_results) > 0 {
-            extracted_prices = parse_shopping_results(shopping_results, selected_stores=self.selected_stores);
-            print("DEBUG LivePriceSearch: " + str(len(extracted_prices)) + " prices");
+        raw_results = search_product_at_stores(self.product_name, stores_to_search);
 
-            if len(extracted_prices) > 0 {
+        if len(raw_results) > 0 {
+            store_groups = parse_and_group_by_store(raw_results);
+            flat_prices = flatten_prices(store_groups);
+            print("DEBUG LivePriceSearch: " + str(len(flat_prices)) + " prices in " + str(len(store_groups)) + " stores");
+
+            if len(flat_prices) > 0 {
+                best = flat_prices[0];
+                worst = flat_prices[0];
+                total = 0.0;
+                for p in flat_prices {
+                    total = total + p["price"];
+                    if p["price"] < best["price"] { best = p; }
+                    if p["price"] > worst["price"] { worst = p; }
+                }
+                avg = total / len(flat_prices);
+
                 report {
                     "product": self.product_name,
                     "source": "google_shopping",
-                    "prices": extracted_prices[:10],
+                    "store_groups": store_groups,
+                    "prices": flat_prices[:15],
                     "analysis": {
-                        "best_store": extracted_prices[0]["store"],
-                        "worst_store": extracted_prices[0]["store"],
-                        "avg_price": 0.0,
-                        "recommendation": "Prices from Google Shopping"
+                        "best_store": best["store"],
+                        "worst_store": worst["store"],
+                        "avg_price": round(avg, 2),
+                        "recommendation": "Best price at " + best["store"] + " ($" + str(best["price"]) + "). Average: $" + str(round(avg, 2)) + "."
                     },
                     "deal_evaluation": {}
                 };
@@ -347,12 +426,12 @@ walker:pub LivePriceSearch {
             }
         }
 
-        report {"error": "No results found for " + self.product_name};
+        report {"error": "No results found for " + self.product_name + " at selected stores."};
     }
 }
 
 # ─────────────────────────────────────────────
-# CrossProductSearch — NO AI, just raw prices + alternatives
+# CrossProductSearch — grouped by store + AI alternatives
 # ─────────────────────────────────────────────
 
 walker:pub CrossProductSearch {
@@ -361,20 +440,21 @@ walker:pub CrossProductSearch {
     has max_alternatives: int = 3;
 
     can run with Root entry {
-        original_results = google_shopping_search(self.product_name);
-        original_prices = [];
-
-        if len(original_results) > 0 {
-            original_prices = parse_shopping_results(original_results, selected_stores=self.selected_stores);
+        stores_to_search = self.selected_stores;
+        if len(stores_to_search) == 0 {
+            stores_to_search = ["Target", "CVS", "Walgreens"];
         }
+
+        raw_results = search_product_at_stores(self.product_name, stores_to_search);
+        store_groups = parse_and_group_by_store(raw_results);
+        flat_prices = flatten_prices(store_groups);
 
         original_best_price = 0.0;
-        if len(original_prices) > 0 {
-            original_best_price = original_prices[0]["price"];
-            for p in original_prices { if p["price"] < original_best_price { original_best_price = p["price"]; } }
+        if len(flat_prices) > 0 {
+            original_best_price = flat_prices[0]["price"];
+            for p in flat_prices { if p["price"] < original_best_price { original_best_price = p["price"]; } }
         }
 
-        # AI: get category and alternatives
         category = str(categorize_product(self.product_name)).split(".")[-1].lower();
         recommendations = suggest_alternatives(self.product_name, category, original_best_price);
 
@@ -383,20 +463,18 @@ walker:pub CrossProductSearch {
         for alt in recommendations.alternatives {
             if alt_count >= self.max_alternatives { break; }
 
-            alt_results = google_shopping_search(alt.search_query);
-            alt_prices = [];
-            if len(alt_results) > 0 {
-                alt_prices = parse_shopping_results(alt_results, selected_stores=self.selected_stores);
-            }
+            alt_raw = search_product_at_stores(alt.search_query, stores_to_search);
+            alt_groups = parse_and_group_by_store(alt_raw);
+            alt_flat = flatten_prices(alt_groups);
 
             alt_best_price = 0.0;
             alt_best_store = "";
             alt_best_url = "";
-            if len(alt_prices) > 0 {
-                alt_best_price = alt_prices[0]["price"];
-                alt_best_store = alt_prices[0]["store"];
-                alt_best_url = alt_prices[0]["url"];
-                for p in alt_prices {
+            if len(alt_flat) > 0 {
+                alt_best_price = alt_flat[0]["price"];
+                alt_best_store = alt_flat[0]["store"];
+                alt_best_url = alt_flat[0]["url"];
+                for p in alt_flat {
                     if p["price"] < alt_best_price {
                         alt_best_price = p["price"];
                         alt_best_store = p["store"];
@@ -420,9 +498,9 @@ walker:pub CrossProductSearch {
                 "best_url": alt_best_url,
                 "price_diff": round(price_diff, 2),
                 "price_diff_pct": round(price_diff_pct, 1),
-                "all_prices": alt_prices[:3],
-                "rating": alt_prices[0].get("rating", None) if len(alt_prices) > 0 else None,
-                "reviews": alt_prices[0].get("reviews", None) if len(alt_prices) > 0 else None
+                "store_groups": alt_groups,
+                "rating": None,
+                "reviews": None
             });
             alt_count = alt_count + 1;
         }
@@ -430,11 +508,12 @@ walker:pub CrossProductSearch {
         report {
             "product": self.product_name,
             "category": category,
-            "source": "google_shopping" if len(original_results) > 0 else "duckduckgo_fallback",
+            "source": "google_shopping",
             "original": {
                 "name": self.product_name,
                 "best_price": original_best_price,
-                "prices": original_prices[:10],
+                "prices": flat_prices[:15],
+                "store_groups": store_groups,
                 "deal_evaluation": {}
             },
             "alternatives": alternatives_with_prices,

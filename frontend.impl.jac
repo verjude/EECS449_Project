@@ -326,28 +326,14 @@ impl app.handleQuickPriceSearch -> None {
             if data.error {
                 searchError = data.error;
             } else {
-                # Wrap LivePriceSearch result to match CrossProductResults format
                 searchResults = {
                     "product": data.product,
-                    "category": "",
                     "source": data.source,
-                    "original": {
-                        "name": data.product,
-                        "best_price": 0,
-                        "prices": data.prices,
-                        "deal_evaluation": data.deal_evaluation if data.deal_evaluation else {}
-                    },
-                    "alternatives": [],
-                    "ai_summary": data.analysis.recommendation if data.analysis else ""
+                    "store_groups": data.store_groups if data.store_groups else [],
+                    "prices": data.prices if data.prices else [],
+                    "analysis": data.analysis if data.analysis else {},
+                    "deal_evaluation": data.deal_evaluation if data.deal_evaluation else {}
                 };
-                # Calculate best price from results
-                if data.prices and data.prices.length > 0 {
-                    best = data.prices[0].price;
-                    for p in data.prices {
-                        if p.price < best { best = p.price; }
-                    }
-                    searchResults.original.best_price = best;
-                }
             }
         } else {
             searchError = "No results returned. Try a different product name.";
