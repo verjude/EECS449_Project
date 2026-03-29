@@ -2,9 +2,9 @@
 
 import requests
 import os
-
+from dotenv import load_dotenv
+load_dotenv()
 DEFAULT_API_KEY = os.environ.get("SERPER_API_KEY", "")
-
 
 def search_google_shopping(query, api_key=None, num_results=5):
     """Generic Google Shopping search."""
