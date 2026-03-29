@@ -1,11 +1,17 @@
 """serper_client.py - Google Shopping API via Serper.dev"""
 
 import requests
+import os
+
+DEFAULT_API_KEY = os.environ.get("SERPER_API_KEY", "")
 
 
-def search_google_shopping(query, api_key, num_results=5):
+def search_google_shopping(query, api_key=None, num_results=5):
     """Generic Google Shopping search."""
+    if api_key is None:
+        api_key = DEFAULT_API_KEY
     if not api_key:
+        print("Serper: No API key set. Run: export SERPER_API_KEY='your_key'")
         return []
     try:
         response = requests.post(
@@ -21,19 +27,22 @@ def search_google_shopping(query, api_key, num_results=5):
         return []
 
 
-def search_store_prices(product_name, store_names, api_key, results_per_store=5):
+def search_store_prices(product_name, store_names, api_key=None, results_per_store=5):
     """Search Google Shopping once per store, return combined results.
     
     Args:
         product_name: e.g. "tylenol extra strength"
         store_names: e.g. ["Target", "CVS", "Walgreens"]
-        api_key: Serper.dev API key
+        api_key: Serper.dev API key (reads from env if not provided)
         results_per_store: how many results per store (hard cap)
     
     Returns:
         List of dicts with store, price, title, url, rating, reviews
     """
+    if api_key is None:
+        api_key = DEFAULT_API_KEY
     if not api_key:
+        print("Serper: No API key set. Run: export SERPER_API_KEY='your_key'")
         return []
     
     all_results = []
