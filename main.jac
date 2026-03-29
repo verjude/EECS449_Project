@@ -14,8 +14,6 @@ import from uuid { uuid4 }
 import from ddgs { DDGS }
 import from serper_client { search_store_prices }
 
-glob SERPER_API_KEY = "f9181c85e50b3547e7d0df656dbebc91d1713cb5";
-
 def search_product_at_stores(product_name: str, store_names: list) -> list[dict] {
     results = search_store_prices(product_name, store_names, SERPER_API_KEY, 5);
     print("DEBUG: Got " + str(len(results)) + " total results across " + str(len(store_names)) + " stores");
