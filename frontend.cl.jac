@@ -8,7 +8,6 @@ import from components.StoreEntryItem { StoreEntryItem }
 import from components.AuthForm { AuthForm }
 import from components.StoreProductsPage { StoreProductsPage }
 import from components.Navbar { Navbar }
-import from components.Chatspage { Chatspage }
 import from components.CrossProductResults { CrossProductResults }
 
 sv import from main {
@@ -16,7 +15,7 @@ sv import from main {
     AddStorePrice, ListStorePrices, UpdateStorePrice, DeleteStore,
     GetBestPrice, ComparePrices,
     AddStoreEntry, ListStoreEntries, DeleteStoreEntry, FindNearbyStores,
-    LivePriceSearch, CrossProductSearch
+    LivePriceSearch
 }
 
 def:pub app -> JsxElement {
@@ -57,12 +56,13 @@ def:pub app -> JsxElement {
         locationLoading: bool = False,
         locationError: str = "",
 
-        # --- AI Product Search (NEW) ---
+        # --- AI Product Search ---
         searchQuery: str = "",
         searchLoading: bool = False,
         searchResults: any = None,
         searchError: str = "",
-        useSelectedStores: bool = True;
+        useSelectedStores: bool = True,
+        searchVersion: int = 0;
 
     can with entry {
         isLoggedIn = jacIsLoggedIn();
@@ -108,16 +108,17 @@ def:pub app -> JsxElement {
     def getUserLocation -> None;
     def handleLocationKeyPress(e: any) -> None;
 
-    # --- AI Cross-Product Search methods (NEW) ---
-    async def handleAISearch -> None;
+    # --- Search methods ---
     def handleSearchKeyPress(e: any) -> None;
     async def handleQuickPriceSearch -> None;
+    def cancelSearch -> None;
+    def clearSearch -> None;
 
     if checkingAuth {
         return
             <div style={{"display": "flex", "justifyContent": "center",
                          "alignItems": "center", "minHeight": "100vh",
-                         "color": "rgba(255,255,255,0.6)", "fontFamily": "system-ui"}}>
+                         "color": "rgba(44,32,16,0.6)", "fontFamily": "system-ui"}}>
                 Loading...
             </div>;
     }
@@ -138,17 +139,15 @@ def:pub app -> JsxElement {
                         onBack={lambda -> None { navigateTo("home"); }}
                     />
                 ) if currentPage == "store-products" and selectedStoreEntry else (
-                    <Chatspage />
-                ) if currentPage == "chats" else (
                     <div className="app-container">
                         <div className="app-content">
 
                             <div className="card" style={{"marginBottom": "1.5rem"}}>
                                 <h2 className="panel-title" style={{"display": "flex", "alignItems": "center", "gap": "0.5rem"}}>
-                                    <span>🔍</span> AI Product Search
+                                    <span>🔍</span> Price Search
                                 </h2>
-                                <p className="panel-subtitle">
-                                    Search for any product — get real prices and AI-recommended alternatives
+                                <p className="panel-subtitle" style={{"color": "rgba(44,32,16,0.55)"}}>
+                                    Search for any product to compare prices across stores
                                 </p>
                                 <div className="add-row" style={{"gap": "0.5rem", "flexWrap": "wrap"}}>
                                     <input
@@ -156,30 +155,57 @@ def:pub app -> JsxElement {
                                         value={searchQuery}
                                         onChange={lambda e: any -> None { searchQuery = e.target.value; }}
                                         onKeyPress={handleSearchKeyPress}
-                                        placeholder="Search any product (e.g. AirPods Pro 2, Nike Air Max 90)..."
+                                        placeholder="Search any product (e.g. Tylenol, AirPods Pro 2)..."
                                         className="todo-input"
                                         style={{"flex": "1", "minWidth": "200px"}}
-                                        disabled={searchLoading}
                                     />
-                                    <button
-                                        onClick={lambda -> None { handleAISearch(); }}
-                                        className="btn-generate"
-                                        disabled={searchLoading or not searchQuery.strip()}
-                                        style={{"fontSize": "0.9rem", "padding": "0.5rem 1rem", "whiteSpace": "nowrap"}}
-                                    >
-                                        {("🔄 Searching..." if searchLoading else "🤖 Compare + Alternatives")}
-                                    </button>
-                                    <button
-                                        onClick={lambda -> None { handleQuickPriceSearch(); }}
-                                        className="btn-add"
-                                        disabled={searchLoading or not searchQuery.strip()}
-                                        style={{"whiteSpace": "nowrap"}}
-                                    >
-                                        {("..." if searchLoading else "⚡ Quick Price")}
-                                    </button>
+                                    {(
+                                        <button
+                                            onClick={lambda -> None { cancelSearch(); }}
+                                            style={{
+                                                "whiteSpace": "nowrap",
+                                                "padding": "0.75rem 1.25rem",
+                                                "background": "rgba(0,0,0,0.06)",
+                                                "border": "1px solid rgba(0,0,0,0.15)",
+                                                "borderRadius": "8px",
+                                                "color": "rgba(44,32,16,0.7)",
+                                                "fontWeight": "600",
+                                                "fontSize": "0.95rem",
+                                                "cursor": "pointer"
+                                            }}
+                                        >
+                                            Stop
+                                        </button>
+                                    ) if searchLoading else (
+                                        <button
+                                            onClick={lambda -> None { handleQuickPriceSearch(); }}
+                                            className="btn-add"
+                                            disabled={not searchQuery.strip()}
+                                            style={{"whiteSpace": "nowrap"}}
+                                        >
+                                            Search
+                                        </button>
+                                    )}
+                                    {(
+                                        <button
+                                            onClick={lambda -> None { clearSearch(); }}
+                                            style={{
+                                                "whiteSpace": "nowrap",
+                                                "background": "transparent",
+                                                "border": "1px solid rgba(0,0,0,0.15)",
+                                                "color": "rgba(44,32,16,0.45)",
+                                                "borderRadius": "6px",
+                                                "padding": "0.5rem 0.75rem",
+                                                "cursor": "pointer",
+                                                "fontSize": "0.85rem"
+                                            }}
+                                        >
+                                            × Clear
+                                        </button>
+                                    ) if (searchResults or searchError) and not searchLoading else None}
                                 </div>
                                 <div style={{"marginTop": "0.75rem", "display": "flex", "alignItems": "center", "gap": "0.5rem"}}>
-                                    <label style={{"display": "flex", "alignItems": "center", "gap": "0.4rem", "cursor": "pointer", "fontSize": "0.85rem", "color": "rgba(255,255,255,0.6)"}}>
+                                    <label style={{"display": "flex", "alignItems": "center", "gap": "0.4rem", "cursor": "pointer", "fontSize": "0.85rem", "color": "rgba(44,32,16,0.6)"}}>
                                         <input
                                             type="checkbox"
                                             checked={useSelectedStores}
@@ -206,8 +232,14 @@ def:pub app -> JsxElement {
                                 ) if searchError else None}
 
                                 {(
+                                    <div style={{"marginTop": "0.5rem", "textAlign": "center", "color": "rgba(44,32,16,0.4)", "fontSize": "0.85rem", "padding": "1.5rem 0"}}>
+                                        Searching...
+                                    </div>
+                                ) if searchLoading else None}
+
+                                {(
                                     <CrossProductResults results={searchResults} />
-                                ) if searchResults else None}
+                                ) if searchResults and not searchLoading else None}
                             </div>
 
                             <div className="two-column-layout">
@@ -279,7 +311,7 @@ def:pub app -> JsxElement {
                                             <button
                                                 onClick={lambda -> None { getUserLocation(); }}
                                                 className="btn-add"
-                                                style={{"whiteSpace": "nowrap", "background": "rgba(59,130,246,0.3)", "borderColor": "rgba(59,130,246,0.5)"}}
+                                                style={{"whiteSpace": "nowrap", "background": "#3b82f6", "borderColor": "#2563eb"}}
                                                 title="Use my current location"
                                             >
                                                 📍 GPS
@@ -311,7 +343,7 @@ def:pub app -> JsxElement {
                                                             <span className="ingredient-name">{nearbyStore.name}</span>
                                                             <span style={{
                                                                 "fontSize": "0.75rem",
-                                                                "color": "rgba(255,255,255,0.4)",
+                                                                "color": "rgba(44,32,16,0.45)",
                                                                 "marginLeft": "0.5rem"
                                                             }}>
                                                                 {nearbyStore.store_type}
@@ -328,8 +360,8 @@ def:pub app -> JsxElement {
                                                                     "fontSize": "0.75rem",
                                                                     "padding": "0.3rem 0.65rem",
                                                                     "whiteSpace": "nowrap",
-                                                                    "background": "rgba(59,130,246,0.25)",
-                                                                    "border": "1px solid rgba(59,130,246,0.4)"
+                                                                    "background": "#3b82f6",
+                                                                    "border": "1px solid #2563eb"
                                                                 }}
                                                                 title={"Add " + nearbyStore.name + " to your store list"}
                                                             >
@@ -337,7 +369,7 @@ def:pub app -> JsxElement {
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <span style={{"fontSize": "0.75rem", "color": "rgba(255,255,255,0.5)"}}>
+                                                    <span style={{"fontSize": "0.75rem", "color": "rgba(44,32,16,0.5)"}}>
                                                         {nearbyStore.address}
                                                     </span>
                                                 </div> for nearbyStore in nearbyStores
@@ -346,13 +378,7 @@ def:pub app -> JsxElement {
                                     ) if nearbyStores.length > 0 else None}
                                     </div>
 
-                                    {(
-                                        <div className="card">
-                                            <div className="empty-message">
-                                                Select a product to view and compare prices
-                                            </div>
-                                        </div>
-                                    ) if not selectedProductId else (
+                                    {selectedProductId and (
                                         <div>
                                             <div className="card">
                                                 <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "1rem"}}>
@@ -407,7 +433,7 @@ def:pub app -> JsxElement {
                                             {(
                                                 <div className="card">
                                                     <div className="comparison-panel">
-                                                        <h3 style={{"margin": "0 0 1rem 0", "fontSize": "1.1rem", "color": "rgba(255,255,255,0.9)"}}>
+                                                        <h3 style={{"margin": "0 0 1rem 0", "fontSize": "1.1rem", "color": "#2c2010"}}>
                                                             AI Analysis
                                                         </h3>
                                                         <div style={{"display": "grid", "gap": "0.75rem"}}>
@@ -424,10 +450,10 @@ def:pub app -> JsxElement {
                                                                 <span className="stat-value">${comparison.avg_price.toFixed(2)}</span>
                                                             </div>
                                                             <div style={{"marginTop": "0.5rem", "padding": "1rem", "background": "rgba(255,255,255,0.05)", "borderRadius": "8px", "borderLeft": "3px solid #3b82f6"}}>
-                                                                <div style={{"fontSize": "0.85rem", "color": "rgba(255,255,255,0.6)", "marginBottom": "0.5rem"}}>
+                                                                <div style={{"fontSize": "0.85rem", "color": "rgba(44,32,16,0.6)", "marginBottom": "0.5rem"}}>
                                                                     Recommendation
                                                                 </div>
-                                                                <div style={{"color": "rgba(255,255,255,0.9)", "lineHeight": "1.5"}}>
+                                                                <div style={{"color": "#2c2010", "lineHeight": "1.5"}}>
                                                                     {comparison.recommendation}
                                                                 </div>
                                                             </div>
@@ -451,10 +477,10 @@ def:pub app -> JsxElement {
                                                                         <div style={{"display": "flex", "alignItems": "center", "gap": "0.5rem"}}>
                                                                             <span style={{"fontSize": "1.5rem"}}>🏆</span>
                                                                             <div>
-                                                                                <div style={{"fontWeight": "600", "color": "rgba(255,255,255,0.9)"}}>
+                                                                                <div style={{"fontWeight": "600", "color": "#2c2010"}}>
                                                                                     Best Price: {bestPrice.name}
                                                                                 </div>
-                                                                                <div style={{"fontSize": "0.85rem", "color": "rgba(255,255,255,0.6)"}}>
+                                                                                <div style={{"fontSize": "0.85rem", "color": "rgba(44,32,16,0.6)"}}>
                                                                                     ${bestPrice.price.toFixed(2)}
                                                                                 </div>
                                                                             </div>

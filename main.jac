@@ -14,7 +14,7 @@ import from uuid { uuid4 }
 import from ddgs { DDGS }
 import from serper_client { search_store_prices }
 
-glob SERPER_API_KEY = "";
+glob SERPER_API_KEY = "46755cabd197a4118f71a4ff8df62f552a1bc2ca";
 
 def search_product_at_stores(product_name: str, store_names: list) -> list[dict] {
     results = search_store_prices(product_name, store_names, SERPER_API_KEY, 5);
@@ -474,7 +474,57 @@ walker:pub LivePriceSearch {
             }
         }
 
-        report {"error": "No results found for " + self.product_name + " at selected stores."};
+        # No results found — get LLM alternatives and search for them at stores
+        category = "other";
+        try {
+            category = str(categorize_product(self.product_name)).split(".")[-1].lower();
+        } except Exception { }
+
+        alternatives = [];
+        ai_summary = "";
+        try {
+            rec = suggest_alternatives(self.product_name, category, 0.0);
+            ai_summary = rec.comparison_summary;
+            alt_count = 0;
+            for alt in rec.alternatives {
+                if alt_count >= 3 { break; }
+                alt_raw = search_product_at_stores(alt.search_query, stores_to_search);
+                alt_groups = parse_and_group_by_store(alt_raw);
+                alt_flat = flatten_for_ai(alt_groups);
+                alt_best_price = 0.0;
+                alt_best_store = "";
+                if len(alt_flat) > 0 {
+                    alt_best_price = alt_flat[0]["price"];
+                    alt_best_store = alt_flat[0]["store"];
+                    for p in alt_flat {
+                        if p["price"] < alt_best_price {
+                            alt_best_price = p["price"];
+                            alt_best_store = p["store"];
+                        }
+                    }
+                }
+                alternatives.append({
+                    "name": alt.name,
+                    "reason": alt.reason,
+                    "store_groups": alt_groups,
+                    "best_price": alt_best_price,
+                    "best_store": alt_best_store
+                });
+                alt_count = alt_count + 1;
+            }
+        } except Exception {
+            try {
+                ai_summary = ask_ai([{"role": "user", "content": "I searched for '" + self.product_name + "' but found no results at retail stores. Suggest 3 similar products to search for instead, and briefly explain why each is a good alternative."}]);
+            } except Exception { }
+        }
+
+        report {
+            "product": self.product_name,
+            "error": "No results found at the selected stores.",
+            "no_store_results": True,
+            "suggestions": alternatives,
+            "ai_summary": ai_summary
+        };
     }
 }
 
@@ -583,10 +633,15 @@ walker:pub CrossProductSearch {
             alt_count = alt_count + 1;
         }
 
+        no_store_results = len(store_groups) == 0;
+        suggestions = [{"name": alt.name, "reason": alt.reason, "search_query": alt.search_query} for alt in recommendations.alternatives] if no_store_results else [];
+
         report {
             "product": self.product_name,
             "category": category,
             "source": "google_shopping",
+            "no_store_results": no_store_results,
+            "suggestions": suggestions,
             "original": {
                 "name": self.product_name,
                 "best_price": original_best_price,

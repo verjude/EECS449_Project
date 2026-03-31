@@ -17,12 +17,6 @@ def:pub Navbar(
                 >
                     Stores & Products
                 </button>
-                <button
-                    className={("nav-link" + (" active" if currentPage == "chats" else ""))}
-                    onClick={lambda -> None { onNavigate("chats"); }}
-                >
-                    AI Assistant
-                </button>
             </div>
             <div className="navbar-actions">
                 <button onClick={onLogout} className="btn-signout">

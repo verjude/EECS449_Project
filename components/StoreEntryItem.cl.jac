@@ -15,7 +15,7 @@ def:pub StoreEntryItem(
             >
                 <span
                     className="ingredient-name"
-                    style={{"textDecoration": "underline dotted", "color": "rgba(255,255,255,0.9)"}}
+                    style={{"textDecoration": "underline dotted", "color": "#2c2010"}}
                 >
                     {store.name}
                 </span>

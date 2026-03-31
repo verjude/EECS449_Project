@@ -49,7 +49,7 @@ def:pub StoreItem(
                 <span className="cost-label" style={{
                     "fontSize": "1.1rem",
                     "fontWeight": "600",
-                    "color": (("#4ade80" if isBest else "rgba(255,255,255,0.9)"))
+                    "color": (("#4ade80" if isBest else "#2c2010"))
                 }}>
                     ${store.price.toFixed(2)}
                 </span>

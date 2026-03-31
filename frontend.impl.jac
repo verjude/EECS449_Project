@@ -262,46 +262,22 @@ impl app.handleLocationKeyPress(e: any) -> None {
 }
 
 # ─────────────────────────────────────────────
-# AI Cross-Product Search (NEW)
+# Search
 # ─────────────────────────────────────────────
 
-impl app.handleAISearch -> None {
-    if not searchQuery.trim() { return; }
-    searchLoading = True;
-    searchError = "";
-    searchResults = None;
+impl app.handleSearchKeyPress(e: any) -> None {
+    if e.key == "Enter" { handleQuickPriceSearch(); }
+}
 
-    try {
-        # Build selected store names for filtering
-        selected_store_names = [];
-        if useSelectedStores and storeEntries.length > 0 {
-            selected_store_names = [s.name for s in storeEntries];
-        }
-
-        result = root spawn CrossProductSearch(
-            product_name=searchQuery.trim(),
-            selected_stores=selected_store_names,
-            max_alternatives=3
-        );
-
-        if result.reports and result.reports.length > 0 {
-            data = result.reports[0];
-            if data.error {
-                searchError = data.error;
-            } else {
-                searchResults = data;
-            }
-        } else {
-            searchError = "No results returned. Try a different product name.";
-        }
-    } except Exception as e {
-        searchError = "Search failed. Please try again.";
-    }
+impl app.cancelSearch -> None {
+    searchVersion = searchVersion + 1;
     searchLoading = False;
 }
 
-impl app.handleSearchKeyPress(e: any) -> None {
-    if e.key == "Enter" { handleAISearch(); }
+impl app.clearSearch -> None {
+    searchResults = None;
+    searchError = "";
+    searchQuery = "";
 }
 
 impl app.handleQuickPriceSearch -> None {
@@ -309,6 +285,8 @@ impl app.handleQuickPriceSearch -> None {
     searchLoading = True;
     searchError = "";
     searchResults = None;
+    searchVersion = searchVersion + 1;
+    my_version = searchVersion;
 
     try {
         selected_store_names = [];
@@ -321,10 +299,25 @@ impl app.handleQuickPriceSearch -> None {
             selected_stores=selected_store_names
         );
 
+        if searchVersion != my_version { return; }
+
         if result.reports and result.reports.length > 0 {
             data = result.reports[0];
-            if data.error {
+            if data.error and not data.suggestions {
                 searchError = data.error;
+            } elif data.error and data.suggestions {
+                searchResults = {
+                    "product": data.product,
+                    "source": "suggestions",
+                    "store_groups": [],
+                    "analysis": {},
+                    "smart_analysis": {},
+                    "store_brand": {},
+                    "deal_evaluation": {},
+                    "no_store_results": True,
+                    "suggestions": data.suggestions if data.suggestions else [],
+                    "ai_summary": data.ai_summary if data.ai_summary else ""
+                };
             } else {
                 searchResults = {
                     "product": data.product,
@@ -340,7 +333,11 @@ impl app.handleQuickPriceSearch -> None {
             searchError = "No results returned. Try a different product name.";
         }
     } except Exception as e {
-        searchError = "Search failed. Please try again.";
+        if searchVersion == my_version {
+            searchError = "Search failed. Please try again.";
+        }
     }
-    searchLoading = False;
+    if searchVersion == my_version {
+        searchLoading = False;
+    }
 }
