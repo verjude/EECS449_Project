@@ -282,7 +282,6 @@ def:pub app -> JsxElement {
                                                                 key={store.id}
                                                                 store={store}
                                                                 onDelete={deleteStoreEntry}
-                                                                onSelect={navigateToStoreProducts}
                                                             /> for store in storeEntries
                                                         ]}
                                                     </div>

@@ -2,25 +2,19 @@
 
 def:pub StoreEntryItem(
     store: dict,
-    onDelete: any,
-    onSelect: any   # NEW: called when the store name is clicked
+    onDelete: any
 ) -> obj {
     return
         <div className="ingredient-item">
             <div
                 className="ingredient-info"
-                onClick={lambda -> None { onSelect(store); }}
-                style={{"cursor": "pointer", "flex": "1"}}
-                title="Click to manage products for this store"
+                style={{"flex": "1"}}
             >
                 <span
                     className="ingredient-name"
-                    style={{"textDecoration": "underline dotted", "color": "#2c2010"}}
+                    style={{"color": "#2c2010"}}
                 >
                     {store.name}
-                </span>
-                <span style={{"fontSize": "0.75rem", "color": "rgba(255,255,255,0.4)", "marginLeft": "0.5rem"}}>
-                    → view products
                 </span>
             </div>
             <div className="ingredient-meta">
