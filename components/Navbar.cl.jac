@@ -8,7 +8,7 @@ def:pub Navbar(
     return
         <nav className="navbar">
             <div className="navbar-brand">
-                <span className="app-title" style={{"fontSize": "1.5rem", "marginBottom": "0"}}>PriceComparator</span>
+                <span className="app-title" style={{"fontSize": "1.5rem", "marginBottom": "0"}}>🛒 PriceComparator</span>
             </div>
             <div className="navbar-links">
                 <button

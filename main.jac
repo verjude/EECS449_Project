@@ -380,7 +380,6 @@ def parse_and_group_by_store(raw_results: list[dict]) -> list[dict] {
 }
 
 def flatten_for_ai(store_groups: list[dict]) -> list[dict] {
-    """Flatten to minimal data for AI — store + title + price only."""
     flat = [];
     for g in store_groups {
         for p in g["products"] {
