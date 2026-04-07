@@ -314,6 +314,47 @@ def:pub LandingPage(onSignIn: any, isSignup: bool, username: str, password: str,
                     "background": "linear-gradient(90deg, transparent, rgba(44,32,16,0.12), transparent)"
                 }} />
             </div>
+            
+            <div style={{"maxWidth": "760px", "margin": "0 auto", "padding": "3rem 2rem"}}>
+                <p style={{
+                    "textAlign": "center",
+                    "fontSize": "0.78rem",
+                    "fontWeight": "600",
+                    "letterSpacing": "0.1em",
+                    "textTransform": "uppercase",
+                    "color": "rgba(44,32,16,0.35)",
+                    "marginBottom": "1.5rem"
+                }}>
+                    See it in action
+                </p>
+                <div style={{
+                    "position": "relative",
+                    "width": "100%",
+                    "paddingBottom": "56.25%",
+                    "borderRadius": "16px",
+                    "overflow": "hidden",
+                    "boxShadow": "0 12px 40px rgba(44,32,16,0.15)",
+                    "border": "1px solid rgba(44,32,16,0.08)"
+                }}>
+                    <iframe 
+                        src="https://www.youtube.com/embed/yhjGy6c957I?si=Yh1B1WRVwAUiIxKH" 
+                        title="PriceComparator Demo"
+                        frameborder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                        allowFullScreen={True}
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        style={{
+                            "position": "absolute",
+                            "top": "0",
+                            "left": "0",
+                            "width": "100%",
+                            "height": "100%",
+                            "border": "none"
+                        }}
+                    >
+                    </iframe>
+                </div>
+            </div>
 
             <div style={{"maxWidth": "860px", "margin": "0 auto", "padding": "3rem 2rem"}}>
                 <p style={{
@@ -440,6 +481,33 @@ def:pub LandingPage(onSignIn: any, isSignup: bool, username: str, password: str,
                     </div>
                 </div>
             </div>
-
+            
+            <div style={{
+                "borderTop": "1px solid rgba(44,32,16,0.08)",
+                "padding": "1.75rem 2rem",
+                "textAlign": "center"
+            }}>
+                <p style={{
+                    "margin": "0",
+                    "fontSize": "0.82rem",
+                    "color": "rgba(44,32,16,0.4)",
+                    "fontFamily": "system-ui, sans-serif"
+                }}>
+                    <a
+                        href="https://www.jac-lang.org"
+                        target="_blank"
+                        style={{
+                            "color": "#3b82f6",
+                            "fontWeight": "600",
+                            "textDecoration": "none",
+                            "marginLeft": "0.3rem"
+                        }}
+                    >
+                        Built with Jaseci
+                    </a>
+                </p>
+            </div>
+    
         </div>;
+
 }
