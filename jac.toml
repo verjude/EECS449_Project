@@ -6,6 +6,7 @@ entry-point = "main.jac"
 
 [dependencies]
 ddgs = "~=9.13"
+byllm = "~=0.6"
 
 [dependencies.npm]
 react = "^18.2.0"
