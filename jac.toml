@@ -34,3 +34,7 @@ base_route_app = "app"
 
 [plugins.byllm.model]
 verbose = true
+
+[plugins.scale.secrets]
+GEMINI_API_KEY="${GEMINI_API_KEY}"
+SERPER_API_KEY="${SERPER_API_KEY}"
